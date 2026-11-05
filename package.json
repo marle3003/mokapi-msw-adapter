@@ -1,0 +1,67 @@
+{
+  "name": "mokapi-msw-adapter",
+  "version": "0.0.0",
+  "description": "Run MSW JSON handlers in Mokapi",
+  "homepage": "https://mokapi.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marle3003/mokapi-msw-adapter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/marle3003/mokapi-msw-adapter/issues"
+  },
+  "keywords": [
+    "mokapi",
+    "msw",
+    "mock service worker",
+    "api mocking",
+    "openapi"
+  ],
+  "author": "Marcel Lehmann",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:integration": "node --test tests/integration.mjs",
+    "test:types": "tsc -p tests/types",
+    "lint": "eslint .",
+    "check": "npm run lint && npm test && npm run test:types && npm run test:integration",
+    "prepack": "npm run check"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "eslint": "^9.39.0",
+    "globals": "^16.5.0",
+    "go-mokapi": "0.56.0",
+    "typescript": "^6.0.3"
+  },
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./register": {
+      "types": "./register.d.ts",
+      "browser": "./browser.js",
+      "default": "./register.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "register.js",
+    "register.d.ts",
+    "scenario.js",
+    "browser.js",
+    "README.md",
+    "LICENSE"
+  ]
+}

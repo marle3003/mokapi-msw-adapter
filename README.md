@@ -245,46 +245,6 @@ Unsupported usage throws an error that names the problem, and Mokapi logs it.
 Before you move an existing mock suite to Mokapi, check that it only uses the
 supported API.
 
-## Contributing
-
-```sh
-npm ci
-npm run check
-```
-
-`npm run check` runs ESLint, the unit tests (`npm test`), the type tests
-(`npm run test:types`) and the integration tests (`npm run test:integration`). The integration tests start the pinned
-Mokapi binary on free ports and clean up afterwards. GitHub Actions runs the
-same checks with Node 22, 24 and 26.
-
-### Releases
-
-Pushing a tag `v*` publishes the package to npm with
-`.github/workflows/publish.yml`, using OIDC Trusted Publishing with provenance.
-No `NPM_TOKEN` is needed.
-
-Before the first release:
-
-1. Create the npm package with a one-time manual publication if necessary.
-   The workflow cannot configure a trusted publisher for you.
-2. In the npm package settings, add a GitHub Actions trusted publisher with
-   the GitHub owner/repository, workflow filename **`publish.yml`**
-   and environment **`npm`**.
-3. Create the GitHub environment **`npm`**, preferably with required approval
-   and a deployment tag rule `v*`.
-
-To release, push a tag:
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow reruns all checks and takes the package version from the tag
-(`v0.1.0` → `0.1.0`). The `version` in `package.json` stays `0.0.0`. Tags that
-are not valid semver fail. Prerelease tags such as `v0.2.0-beta.1` are not
-published. npm versions are immutable.
-
 ## License
 
 [MIT](LICENSE)

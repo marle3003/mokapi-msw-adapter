@@ -57,17 +57,23 @@ async function startMokapi(directory, isReady) {
   const require = createRequire(import.meta.url);
   const mokapiRequire = createRequire(require.resolve('go-mokapi/package.json'));
   const binary = mokapiRequire(`@go-mokapi/${process.platform}-${process.arch}`);
-  const child = spawn(binary, [], { cwd: directory, stdio: 'inherit' });
+  const child = spawn(binary, [], { cwd: directory, stdio: ['inherit', 'pipe', 'pipe'] });
+  let output = '';
+  for (const [stream, target] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) {
+    stream.setEncoding('utf8');
+    stream.on('data', (chunk) => { output += chunk; target.write(chunk); });
+  }
   let startupError;
   child.on('error', (error) => { startupError = error; });
   const stopped = new Promise((resolve) => {
     child.once('error', resolve);
-    child.once('exit', resolve);
+    child.once('close', resolve); // after the output streams are drained
   });
   const stop = async () => {
     if (child.exitCode === null) child.kill('SIGTERM');
     await stopped;
   };
+  stop.output = () => output;
   const deadline = Date.now() + 15000;
   while (true) {
     if (startupError) throw startupError;
@@ -78,7 +84,7 @@ async function startMokapi(directory, isReady) {
     } catch (error) {
       if (Date.now() >= deadline) {
         await stop();
-        throw new Error('Mokapi startup failed', { cause: error });
+        throw new Error(`Mokapi startup failed\n${output}`, { cause: error });
       }
       await setTimeout(100);
     }
@@ -299,3 +305,60 @@ export default function () {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+const basePathCases = [
+  { name: 'a handler written for the request path matches when the server URL has a base path',
+    basePath: '/v1', handlerPath: '/v1/users', answeredByAdapter: true },
+  { name: 'a handler matches when the server URL has a base path with several segments',
+    basePath: '/api/v1', handlerPath: '/api/v1/users', answeredByAdapter: true },
+  { name: 'a handler written without the base path is not matched and logs no error',
+    basePath: '/v1', handlerPath: '/users', answeredByAdapter: false },
+];
+
+for (const { name, basePath, handlerPath, answeredByAdapter } of basePathCases) {
+  test(name, { timeout: 45000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mokapi-adapter-'));
+    let stop;
+    try {
+      const [port, apiPort] = await unusedPorts(2);
+      const base = `http://localhost:${port}${basePath}`;
+      const operation = { get: { responses: { 200: {
+        description: 'Mock response',
+        content: { 'application/json': { schema: {
+          type: 'object', required: ['source'], properties: { source: { type: 'string' } },
+        } } },
+      } } } };
+      await writeFile(join(directory, 'contract.json'), JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'Adapter base path', version: '1.0.0' },
+        servers: [{ url: base }],
+        paths: { '/users': operation, '/status': operation },
+      }));
+      await linkAdapter(directory);
+      await writeFile(join(directory, 'mocks.js'), `
+import { http, HttpResponse } from 'msw';
+import { app } from 'mokapi';
+import { register } from 'mokapi-msw-adapter/register';
+export default function () {
+  // Native route, so readiness does not depend on the adapter under test.
+  app.http().get('/status', (request, response) => { response.data = { source: 'ready' }; });
+  register({ success: [http.get('${handlerPath}', () => HttpResponse.json({ source: 'adapter' }))] });
+}`);
+      await writeFile(join(directory, 'mokapi.yaml'), mokapiConfig(apiPort, ['contract.json', 'mocks.js']));
+
+      stop = await startMokapi(directory, async () => {
+        assert.deepEqual(await getJson(`${base}/status`), { source: 'ready' });
+      });
+
+      // Generated data is a random string, so it never equals 'adapter'.
+      const users = await getJson(`${base}/users`);
+      if (answeredByAdapter) assert.deepEqual(users, { source: 'adapter' });
+      else assert.notDeepEqual(users, { source: 'adapter' });
+      await stop();
+      assert.doesNotMatch(stop.output(), /No shared mock/);
+    } finally {
+      if (stop) await stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}

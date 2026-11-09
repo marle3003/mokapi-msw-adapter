@@ -207,8 +207,9 @@ export.
 | `options.scenarioParameter` | `string`                          | `'__mockScenario'` | Query parameter that selects the scenario           |
 | `options.defaultScenario`   | `string`                          | `'success'`        | Scenario used when the parameter is missing         |
 
-`register()` creates one Mokapi route per distinct path. Calling it in the
-browser throws an error.
+Handler paths are request paths, as the browser sends them. If the `servers`
+URL of your contract has a base path such as `/v1`, write `http.get('/v1/users', ...)`.
+Calling `register()` in the browser throws an error.
 
 ### TypeScript
 

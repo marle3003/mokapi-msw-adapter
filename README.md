@@ -193,6 +193,75 @@ export default function () {
 
 Requests to other APIs keep Mokapi's usual behavior.
 
+If your APIs live on different origins, call `register()` once per API, each
+with its own `api` and [`origin`](#origin):
+
+```js
+export default function () {
+  register(shopScenarios, { api: 'Shop API', origin: 'https://shop.example.com' });
+  register(authScenarios, { api: 'Auth API', origin: 'https://auth.example.com' });
+}
+```
+
+## Origin
+
+By default, the adapter ignores the origin of absolute handler URLs, because
+Mokapi doesn't know which origin the browser called. Set `origin` to the origin
+your browser uses and the adapter matches handlers like MSW does in the browser:
+
+```js
+// Mokapi script
+export default function () {
+  register(scenarios, { api: 'Shop API', origin: 'https://api.example.com' });
+}
+```
+
+```js
+// mocks.js, shared with the browser
+export const scenarios = {
+  success: [
+    // matches by path
+    http.get('/v1/users/:id', ({ params }) => HttpResponse.json({ id: params.id })),
+    // matches, same origin
+    http.get('https://api.example.com/v1/orders', () => HttpResponse.json([])),
+    // doesn't match, different origin
+    http.get('https://other.example.com/v1/orders', () => HttpResponse.json([])),
+    // matches, params.tenant is 'api'
+    http.get('https://:tenant.example.com/v1/tenant', ({ params }) =>
+      HttpResponse.json({ tenant: params.tenant }),
+    ),
+    // matches
+    http.get(/^https:\/\/api\.example\.com\/v1\/reports\/\d+$/, () => HttpResponse.json({})),
+  ],
+};
+```
+
+Set `origin` when your handlers use absolute URLs, parameters in the origin, or
+a RegExp anchored to the origin. Without these, you don't need it.
+
+With `origin`, the adapter builds the request URL as the origin plus the path
+Mokapi received (including a base path of the `servers` URL, without the query)
+and tests every handler of this `register()` call against it:
+
+- Relative paths match by path.
+- An absolute URL matches only if its origin is the same. A handler with a
+  different origin doesn't answer.
+- Parameters and wildcards in the origin of a handler URL are set in `params`,
+  as in MSW.
+- A RegExp is tested against the origin plus the path. Mokapi's own host and
+  port don't matter.
+
+Mokapi reports the scheme of every request as `http`. With `origin` set, this
+doesn't affect matching, because the adapter uses the scheme of `origin`.
+
+The value must be an origin only: `scheme://host[:port]` with `http` or
+`https`, optionally with a trailing `/`. The adapter normalizes it, so
+`https://api.example.com:443/` becomes `https://api.example.com`. A path, query,
+hash, relative URL or a value that isn't a string makes `register()` throw
+`mokapi-msw-adapter origin must be a URL origin such as https://api.example.com`.
+Don't put the base path of the `servers` URL into `origin`. It is already part
+of the request path, so write it in your handler paths.
+
 ## API
 
 ### `register(scenarios, options)`
@@ -204,6 +273,7 @@ export.
 |-----------------------------|-----------------------------------|--------------------|-----------------------------------------------------|
 | `scenarios`                 | `Record<string, HttpHandler[]>`   | –                  | Handlers grouped by scenario name                   |
 | `options.api`               | `string`                          | all APIs           | `info.title` of the OpenAPI contract to restrict the handlers to, see [Multiple APIs](#multiple-apis) |
+| `options.origin`            | `string`                          | none               | Origin the browser calls, for example `https://api.example.com`, see [Origin](#origin) |
 | `options.scenarioParameter` | `string`                          | `'__mockScenario'` | Query parameter that selects the scenario           |
 | `options.defaultScenario`   | `string`                          | `'success'`        | Scenario used when the parameter is missing         |
 
@@ -243,7 +313,8 @@ The path matching follows MSW 3.x. A handler path is a string or a RegExp:
 | `/r/:rest+`                        | `/r/a/b`, but not `/r`             | `{ rest: 'a/b' }`          |
 | `/r/:rest*`                        | `/r` and `/r/a/b`                  | `{}` and `{ rest: 'a/b' }` |
 | `/files/*`                         | `/files/a/b.txt`                   | `{ 0: 'a/b.txt' }`         |
-| `https://api.example.com/v1/users` | `/v1/users`, the origin is ignored | `{}`                       |
+| `https://api.example.com/v1/users` | `/v1/users`, the origin is ignored without `origin` | `{}`      |
+| `https://:tenant.example.com/v1/users` | with `origin: 'https://api.example.com'`: `/v1/users` | `{ tenant: 'api' }` |
 | `/\/v1\/reports\/\d+$/`            | `/v1/reports/42`                   | `{}`                       |
 
 `:name+` and `:name*` give one string, `'a/b'` for several segments. Each `*`
@@ -295,16 +366,23 @@ Invalid arguments throw when you call `delay()`, for example
   package's `index.d.ts`. If a module shared with the browser calls
   `delay('infinite')`, remove it for Mokapi.
 - `delay('real')` and `delay()` always wait 100-399 ms. MSW uses 5 ms in Node.
-- Mokapi doesn't know the origin the client used, so the adapter ignores the
-  origin of an absolute URL and matches by path only. Parameters in the origin
-  (`https://:tenant.example.com/...`) give no params. A wildcard that spans the
-  origin gives the path instead of the full URL: for `http.get('*', ...)` the
-  param `0` is `a/b`, not `http://localhost/a/b`. A leading `*` before a path
-  (`*/users`) is ignored.
-- A RegExp is tested against the URL Mokapi received, for example
-  `http://localhost:8080/v1/users`, without the query. The default port of the
-  scheme (80, 443) is omitted. A RegExp with the origin of your real API
+- Without [`origin`](#origin), Mokapi doesn't know the origin the client used,
+  so the adapter ignores the origin of an absolute URL and matches by path
+  only. Parameters in the origin (`https://:tenant.example.com/...`) give no
+  params. A wildcard that spans the origin gives the path instead of the full
+  URL: for `http.get('*', ...)` the param `0` is `a/b`, not
+  `http://localhost/a/b`. A leading `*` before a path (`*/users`) is ignored.
+- Without `origin`, a RegExp is tested against the URL Mokapi received, for
+  example `http://localhost:8080/v1/users`, without the query. The default port
+  of the scheme (80, 443) is omitted. A RegExp with the origin of your real API
   doesn't match.
+- With `origin`, these three differences don't apply. `request.url` in the
+  resolver is still the URL Mokapi received (for example
+  `http://localhost:8080/v1/users`), not the origin you set.
+- With `origin`, a handler with a different origin doesn't count as a match.
+  If no handler of any scenario matches the request, the adapter steps aside
+  and Mokapi generates the response from your OpenAPI contract, without a
+  `No shared mock` error.
 - An optional parameter in the middle of a path, such as `/a/:x?/b`, follows
   path-to-regexp: it matches `/a/b` and `/a/1/b`. MSW 3.0.4 matches this
   differently (`/a/1/b` doesn't match there).

@@ -60,6 +60,7 @@ register({ success: [handler] }, {
   scenarioParameter: 'scenario',
   defaultScenario: 'success',
 });
+register({ success: [handler] }, { api: 'Shop API', origin: 'https://api.example.com' });
 // Handlers typed by the real msw package are accepted as well.
 register({ success: [{ info: { method: 'GET', path: '/api/profile' } }] });
 
@@ -67,6 +68,8 @@ register({ success: [{ info: { method: 'GET', path: '/api/profile' } }] });
 register({ success: handler });
 // @ts-expect-error api must be a string
 register({ success: [handler] }, { api: 123 });
+// @ts-expect-error origin must be a string
+register({ success: [handler] }, { origin: 123 });
 // @ts-expect-error unknown option
 register({ success: [handler] }, { scenario: 'success' });
 

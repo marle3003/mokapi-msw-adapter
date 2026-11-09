@@ -11,6 +11,15 @@ export interface RegisterOptions {
    * APIs share a path.
    */
   api?: string;
+  /**
+   * The origin the browser calls, only `scheme://host[:port]` (a trailing `/` is
+   * allowed, a default port is removed). With it, the handlers of this call match
+   * like in the browser: an absolute URL answers only for the same origin, origin
+   * parameters and wildcards appear in `params`, and a RegExp is tested against
+   * `origin + path`. Mokapi's own host and port don't matter. The base path of the
+   * OpenAPI `servers` URL is not part of it. Throws when called with anything else.
+   */
+  origin?: string;
   /** Query parameter that selects the scenario. Default: `__mockScenario`. */
   scenarioParameter?: string;
   /** Scenario used when the query parameter is missing. Default: `success`. */

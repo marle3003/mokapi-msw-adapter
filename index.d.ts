@@ -48,7 +48,9 @@ export class HttpHandler {
    * @param path Path of the request including the base path of the OpenAPI `servers` URL.
    *   Supports `:name`, `:name?`, `:name+`, `:name*` and `*`, as in MSW. An absolute URL
    *   matches by its path only, the origin is ignored. A RegExp is tested against the
-   *   request URL without query. A query string or hash in a string path throws.
+   *   request URL without query. This holds without the `origin` option of `register()`,
+   *   with it handlers match like MSW in the browser. A query string or hash in a string
+   *   path throws.
    * @param resolver Returns the response.
    */
   constructor(method: string | RegExp, path: string | RegExp, resolver: HttpResponseResolver);

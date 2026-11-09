@@ -85,8 +85,8 @@ async function startMokapi(directory, isReady) {
   }
 }
 
-const getJson = async (url) => {
-  const response = await fetch(url, { signal: AbortSignal.timeout(1000) });
+const getJson = async (url, timeout = 1000) => {
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeout) });
   assert.equal(response.status, 200, url);
   return response.json();
 };
@@ -211,3 +211,91 @@ export default function () {
     }
   });
 }
+
+// Fetches url and returns the body with the elapsed milliseconds. The timeout is
+// longer than in getJson because delayed responses are expected.
+async function getTimedJson(url) {
+  const start = performance.now();
+  const body = await getJson(url, 5000);
+  return { body, elapsed: performance.now() - start };
+}
+
+test('await delay() in a resolver delays only that response', { timeout: 45000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mokapi-adapter-'));
+  let stop;
+  try {
+    const [port, apiPort] = await unusedPorts(2);
+    const base = `http://localhost:${port}`;
+    const operation = { get: { responses: { 200: {
+      description: 'Mock response',
+      content: { 'application/json': { schema: {
+        type: 'object', required: ['source'], properties: { source: { type: 'string' } },
+      } } },
+    } } } };
+    await writeFile(join(directory, 'contract.json'), JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'Adapter delay', version: '1.0.0' },
+      servers: [{ url: base }],
+      paths: { '/profile': operation, '/status': operation },
+    }));
+    await linkAdapter(directory);
+    await writeFile(join(directory, 'mocks.js'), `
+import { http, HttpResponse, delay } from 'msw';
+import { register } from 'mokapi-msw-adapter/register';
+const respond = (path, beforeResponse = () => {}) => http.get(path, async () => {
+  await beforeResponse();
+  return HttpResponse.json({ source: 'adapter' });
+});
+export default function () {
+  register({
+    success: [respond('/profile'), respond('/status')],
+    fixed: [respond('/profile', () => delay(300))],
+    random: [respond('/profile', () => delay())],
+    real: [respond('/profile', () => delay('real'))],
+    slow: [respond('/profile', () => delay(2000))],
+    unawaited: [respond('/profile', () => { delay(2000); })],
+    invalid: [respond('/profile', () => delay('foo'))],
+    infinite: [respond('/profile', () => delay('infinite'))],
+    tooLarge: [respond('/profile', () => delay(2147483648))],
+  });
+}`);
+    await writeFile(join(directory, 'mokapi.yaml'), mokapiConfig(apiPort, ['contract.json', 'mocks.js']));
+
+    stop = await startMokapi(directory, async () => {
+      assert.deepEqual(await getJson(`${base}/profile`), { source: 'adapter' });
+    });
+
+    const adapter = { source: 'adapter' };
+    const profile = (scenario) => getTimedJson(`${base}/profile?__mockScenario=${scenario}`);
+
+    const fixed = await profile('fixed');
+    assert.deepEqual(fixed.body, adapter);
+    assert.ok(fixed.elapsed >= 300, `fixed: ${fixed.elapsed} ms`);
+
+    for (const scenario of ['random', 'real']) {
+      const { body, elapsed } = await profile(scenario);
+      assert.deepEqual(body, adapter);
+      assert.ok(elapsed >= 100 && elapsed < 3000, `${scenario}: ${elapsed} ms`);
+    }
+
+    const [slow, status] = await Promise.all([
+      profile('slow'),
+      setTimeout(100).then(() => getTimedJson(`${base}/status`)),
+    ]);
+    assert.deepEqual(slow.body, adapter);
+    assert.ok(slow.elapsed >= 2000, `slow: ${slow.elapsed} ms`);
+    assert.deepEqual(status.body, adapter);
+    assert.ok(status.elapsed < 1000, `status while another request waits: ${status.elapsed} ms`);
+
+    const unawaited = await profile('unawaited');
+    assert.deepEqual(unawaited.body, adapter);
+    assert.ok(unawaited.elapsed < 1000, `unawaited: ${unawaited.elapsed} ms`);
+
+    for (const scenario of ['invalid', 'infinite', 'tooLarge']) {
+      assert.notDeepEqual((await profile(scenario)).body, adapter, scenario);
+    }
+  } finally {
+    if (stop) await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

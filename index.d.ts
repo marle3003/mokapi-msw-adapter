@@ -75,3 +75,13 @@ export class HttpResponse {
   /** Creates a JSON response. Mokapi validates `body` against the OpenAPI schema. */
   static json<T>(body: T, init?: JsonResponseInit): JsonResponse<T>;
 }
+
+/**
+ * Returns a Promise that resolves after the given time, like MSW's `delay()`.
+ * Invalid arguments throw when `delay()` is called.
+ *
+ * @param durationOrMode Whole milliseconds (fractions are rounded, negative numbers mean 0,
+ *   at most 2147483647) or `'real'`. Without an argument, `'real'` is used.
+ *   `'real'` waits a random 100 to 399 ms. `'infinite'` is not supported.
+ */
+export function delay(durationOrMode?: number | 'real'): Promise<void>;

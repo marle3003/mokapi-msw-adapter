@@ -1,5 +1,5 @@
 // Imports through the package name to check the "types" conditions in package.json exports.
-import { http, HttpHandler, HttpResponse, type JsonResponse } from 'mokapi-msw-adapter';
+import { delay, http, HttpHandler, HttpResponse, type JsonResponse } from 'mokapi-msw-adapter';
 import { register } from 'mokapi-msw-adapter/register';
 
 const handler: HttpHandler = http.get('/api/profile', () => HttpResponse.json({ name: 'Jane' }));
@@ -29,6 +29,23 @@ HttpResponse.json({}, { headers: [['X-Demo', 'yes']] });
 // @ts-expect-error status must be a number
 HttpResponse.json({}, { status: '200' });
 
+const delayed: Promise<void> = delay(100);
+delay();
+delay('real');
+http.get('/api/profile', async () => {
+  await delay(500);
+  return HttpResponse.json({ name: 'Jane' });
+});
+
+// @ts-expect-error 'infinite' is not supported
+delay('infinite');
+// @ts-expect-error unknown mode
+delay('foo');
+// @ts-expect-error duration must be a number
+delay({});
+// @ts-expect-error duration must be a number
+delay(true);
+
 register({ success: [handler] });
 register({ success: [handler], error: [] }, { api: 'My API' });
 register({ success: [handler] }, {
@@ -46,4 +63,4 @@ register({ success: [handler] }, { api: 123 });
 // @ts-expect-error unknown option
 register({ success: [handler] }, { scenario: 'success' });
 
-export { name };
+export { name, delayed };

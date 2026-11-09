@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { http, HttpHandler, HttpResponse } from '../index.js';
+import { delay, http, HttpHandler, HttpResponse } from '../index.js';
 import { selectScenario } from '../scenario.js';
 
 test('registers a resolver without executing it at build time', () => {
@@ -61,4 +61,60 @@ test('decodes query keys and values and preserves explicit empty scenarios', () 
   assert.equal(select('__mockScenario'), '');
   assert.equal(select('__mockScenario=value=with=equals'), 'value=with=equals');
   assert.throws(() => select('__mockScenario=%ZZ'), URIError);
+});
+
+// Milliseconds on the mocked clock until the promise returned by start() resolves.
+async function waitedMs(t, start) {
+  t.mock.timers.reset();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let settled = false;
+  const promise = start();
+  promise.then(() => { settled = true; });
+  for (let elapsed = 0; elapsed <= 1000; elapsed++) {
+    t.mock.timers.tick(elapsed === 0 ? 0 : 1);
+    await new Promise((resolve) => setImmediate(resolve));
+    if (settled) return elapsed;
+  }
+  throw new Error('delay() did not resolve within 1000 ms');
+}
+
+test('delay resolves to undefined after the given milliseconds', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let settled = false;
+  const promise = delay(500);
+  promise.then(() => { settled = true; });
+  t.mock.timers.tick(499);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  t.mock.timers.tick(1);
+  assert.equal(await promise, undefined);
+});
+
+test('delay rounds fractions to whole milliseconds and treats negative numbers as 0', async (t) => {
+  assert.equal(await waitedMs(t, () => delay(1.6)), 2);
+  assert.equal(await waitedMs(t, () => delay(-1)), 0);
+  assert.equal(await waitedMs(t, () => delay(-0.4)), 0);
+});
+
+test('delay() and delay(\'real\') wait a random 100 to 399 ms', async (t) => {
+  const random = t.mock.method(Math, 'random');
+  for (const start of [() => delay(), () => delay('real')]) {
+    random.mock.mockImplementation(() => 0);
+    assert.equal(await waitedMs(t, start), 100);
+    random.mock.mockImplementation(() => 0.999);
+    assert.equal(await waitedMs(t, start), 399);
+  }
+});
+
+test('delay accepts the maximum of 2147483647 ms', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  assert.doesNotThrow(() => delay(2147483647));
+});
+
+test('delay rejects invalid arguments synchronously', () => {
+  assert.throws(() => delay('infinite'), /^Error: mokapi-msw-adapter does not support delay\('infinite'\)\./);
+  for (const value of ['foo', '500', NaN, Infinity, -Infinity, {}, null]) {
+    assert.throws(() => delay(value), /^Error: mokapi-msw-adapter: delay\(\) expects a number of milliseconds or 'real'\./);
+  }
+  assert.throws(() => delay(2147483648), /^Error: mokapi-msw-adapter: delay\(\) supports at most 2147483647 ms\./);
 });

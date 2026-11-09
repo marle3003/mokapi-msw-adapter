@@ -228,6 +228,46 @@ Imported from `msw` (aliased to this package in Mokapi):
 - `HttpResponse.json(body, { status, headers })` with plain-object headers
 - resolver argument: `params` and a `request` with `url` (string), `method`,
   `headers.get()`, `json()` and `text()`
+- `delay(durationOrMode)`, see below
+
+#### `delay()`
+
+`delay()` returns a Promise that resolves after the given time. Await it in an
+async resolver to delay the response:
+
+```js
+import { http, HttpResponse, delay } from 'msw';
+
+export const scenarios = {
+  success: [
+    http.get('/api/profile', async () => {
+      await delay(500);
+      return HttpResponse.json({ name: 'Jane Doe', email: 'jane.doe@example.com' });
+    }),
+  ],
+};
+```
+
+| Call                        | Behavior                                         |
+|-----------------------------|--------------------------------------------------|
+| `delay(500)`                | waits 500 ms                                     |
+| `delay()` or `delay('real')`| waits a random 100-400 ms                        |
+
+Fractions are rounded to whole milliseconds and negative numbers count as 0. The
+maximum is 2147483647 ms. Only the request whose handler awaits the delay waits.
+Mokapi answers other requests to the same module in the meantime. A `delay()`
+that you don't await doesn't delay the response.
+
+Invalid arguments throw when you call `delay()`, for example
+`mokapi-msw-adapter: delay() expects a number of milliseconds or 'real'.`
+
+## Differences to MSW
+
+- `delay('infinite')` throws `mokapi-msw-adapter does not support delay('infinite')`,
+  because the request would never be answered. It is also a type error in this
+  package's `index.d.ts`. If a module shared with the browser calls
+  `delay('infinite')`, remove it for Mokapi.
+- `delay('real')` and `delay()` always wait 100-400 ms. MSW uses 5 ms in Node.
 
 ## Limitations
 
@@ -237,7 +277,7 @@ This is not a full implementation of MSW. Not supported:
   exact relative paths work.
 - responses other than `HttpResponse.json()`, and status codes without a body
   (204, 205, 304)
-- cookies, streaming, network errors, `delay()` and `passthrough()`
+- cookies, streaming, network errors and `passthrough()`
 - complete Web API implementations of `Request`, `Response`, `Headers` and `URL`
 - any other MSW export
 

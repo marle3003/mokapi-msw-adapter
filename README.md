@@ -251,7 +251,7 @@ export const scenarios = {
 | Call                        | Behavior                                         |
 |-----------------------------|--------------------------------------------------|
 | `delay(500)`                | waits 500 ms                                     |
-| `delay()` or `delay('real')`| waits a random 100-400 ms                        |
+| `delay()` or `delay('real')`| waits a random 100-399 ms                        |
 
 Fractions are rounded to whole milliseconds and negative numbers count as 0. The
 maximum is 2147483647 ms. Only the request whose handler awaits the delay waits.
@@ -267,7 +267,7 @@ Invalid arguments throw when you call `delay()`, for example
   because the request would never be answered. It is also a type error in this
   package's `index.d.ts`. If a module shared with the browser calls
   `delay('infinite')`, remove it for Mokapi.
-- `delay('real')` and `delay()` always wait 100-400 ms. MSW uses 5 ms in Node.
+- `delay('real')` and `delay()` always wait 100-399 ms. MSW uses 5 ms in Node.
 
 ## Limitations
 

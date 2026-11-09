@@ -82,6 +82,6 @@ export class HttpResponse {
  *
  * @param durationOrMode Whole milliseconds (fractions are rounded, negative numbers mean 0,
  *   at most 2147483647) or `'real'`. Without an argument, `'real'` is used.
- *   `'real'` waits a random 100 to 399 ms. `'infinite'` is not supported.
+ *   `'real'` waits a random 100-399 ms. `'infinite'` is not supported.
  */
 export function delay(durationOrMode?: number | 'real'): Promise<void>;

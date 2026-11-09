@@ -5,9 +5,21 @@ import { selectScenario } from '../scenario.js';
 
 test('registers a resolver without executing it at build time', () => {
   const resolver = () => HttpResponse.json({ name: 'Jane' });
-  assert.deepEqual({ ...http.get('/api/profile', resolver) }, {
-    method: 'GET', path: '/api/profile', resolver,
-  });
+  const handler = http.get('/api/profile', resolver);
+  assert.equal(handler.method, 'GET');
+  assert.equal(handler.path, '/api/profile');
+  assert.equal(handler.resolver, resolver);
+});
+
+test('accepts path patterns, absolute URLs and RegExp and matches them by path', () => {
+  const resolver = () => HttpResponse.json({});
+  assert.deepEqual(http.get('/api/:id', resolver).matches('http://localhost/api/7'), { id: '7' });
+  assert.deepEqual(http.get('/api/*', resolver).matches('http://localhost/api/a/b'), { 0: 'a/b' });
+  assert.deepEqual(http.get('https://example.com/api', resolver).matches('http://localhost/api'), {});
+  assert.equal(http.get('/api', resolver).matches('http://localhost/other'), null);
+  const pattern = /\/api\/\d+$/;
+  assert.equal(http.get(pattern, resolver).path, pattern);
+  assert.deepEqual(http.get(pattern, resolver).matches('http://localhost/api/7'), {});
 });
 
 test('preserves JSON serialization, status and headers', () => {
@@ -20,9 +32,10 @@ test('preserves JSON serialization, status and headers', () => {
 });
 
 test('rejects unsupported routes and invalid JSON responses explicitly', () => {
-  for (const path of ['/api/:id', '/api/*', 'https://example.com/api']) {
+  for (const path of ['api', 123, undefined]) {
     assert.throws(() => http.get(path, () => undefined), /exact relative paths/);
   }
+  assert.throws(() => http.get('/api?page=1', () => undefined), /does not match query parameters/);
   assert.throws(() => HttpResponse.json(undefined), /requires a JSON body/);
   assert.throws(() => HttpResponse.json({}, { status: 204 }), /cannot include a JSON body/);
   assert.throws(() => HttpResponse.json({}, { status: 0 }), /Unsupported HTTP status/);

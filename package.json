@@ -39,6 +39,7 @@
     "eslint": "^9.39.0",
     "globals": "^16.5.0",
     "go-mokapi": "0.56.0",
+    "msw": "3.0.4",
     "typescript": "^6.0.3"
   },
   "main": "./index.js",
@@ -60,6 +61,7 @@
     "register.js",
     "register.d.ts",
     "scenario.js",
+    "path.js",
     "browser.js",
     "README.md",
     "LICENSE"

@@ -1,16 +1,15 @@
 // Mokapi's module alias maps MSW imports to this implementation.
-const ERROR_PREFIX = 'mokapi-msw-adapter';
+import { compilePath, ERROR_PREFIX } from './path.js';
+
 const MAX_DELAY = 2147483647;
 const REAL_MIN = 100;
 const REAL_RANGE = 300;
 
 export class HttpHandler {
   constructor(method, path, resolver) {
-    if (typeof path !== 'string' || !path.startsWith('/') || /[:*?{}#]/.test(path)) {
-      throw new Error(`${ERROR_PREFIX} supports exact relative paths only.`);
-    }
     this.method = method;
     this.path = path;
+    this.matches = compilePath(path);
     this.resolver = resolver;
   }
 }

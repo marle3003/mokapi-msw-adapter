@@ -18,8 +18,10 @@ export interface RegisterOptions {
 }
 
 /**
- * Registers the scenarios as Mokapi handlers. Handler paths are matched against
- * the request path, including any base path of the OpenAPI `servers` URL. Call
- * it in the default export of your mock module. Throws when called in a browser.
+ * Registers the scenarios as Mokapi handlers. Handler paths (patterns, absolute
+ * URLs and RegExp) are matched against the request path, including any base path
+ * of the OpenAPI `servers` URL. In the selected scenario, the first handler that
+ * matches method and path answers. Call it in the default export of your mock
+ * module. Throws when called in a browser.
  */
 export function register(scenarios: Scenarios, options?: RegisterOptions): void;

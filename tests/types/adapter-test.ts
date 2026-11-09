@@ -13,6 +13,13 @@ http.all('/api/profile', async ({ request, params }) => {
 });
 new HttpHandler('QUERY', '/search', () => HttpResponse.json([]));
 new HttpHandler(/GET|QUERY/, '/search', () => HttpResponse.json([]));
+new HttpHandler('GET', /\/x/, () => HttpResponse.json([]));
+http.get(/\/x/, () => HttpResponse.json([]));
+http.get('/u/:id', ({ params }) => {
+  const id: string = params.id;
+  return HttpResponse.json({ id });
+});
+const pathOfHandler: string | RegExp = http.get(/\/x/, () => HttpResponse.json([])).path;
 
 const response: JsonResponse<{ name: string }> = HttpResponse.json(
   { name: 'Jane' },
@@ -20,7 +27,7 @@ const response: JsonResponse<{ name: string }> = HttpResponse.json(
 );
 const name: string = response.data.name;
 
-// @ts-expect-error path must be a string
+// @ts-expect-error path must be a string or RegExp
 http.get(123, () => HttpResponse.json({}));
 // @ts-expect-error resolver must return HttpResponse.json()
 http.get('/api/profile', () => 'text');
@@ -63,4 +70,4 @@ register({ success: [handler] }, { api: 123 });
 // @ts-expect-error unknown option
 register({ success: [handler] }, { scenario: 'success' });
 
-export { name, delayed };
+export { name, delayed, pathOfHandler };

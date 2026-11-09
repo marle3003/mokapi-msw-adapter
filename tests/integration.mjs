@@ -362,3 +362,79 @@ export default function () {
     }
   });
 }
+
+// [request path, handler that answers (with its params), or undefined for generated data]
+const handlerPathCases = [
+  ['/v1/users/42', { handler: 'user', params: { id: '42' } }],
+  ['/v1/users/me', { handler: 'me', params: {} }],
+  ['/v1/files/a/b.txt', { handler: 'file', params: { 0: 'a/b.txt' } }],
+  ['/v1/orders', { handler: 'order', params: {} }],
+  ['/v1/reports/42', { handler: 'report', params: {} }],
+  ['/v1/search/a%20b', { handler: 'search', params: { term: 'a b' } }],
+  ['/v1/archive', undefined],
+  ['/v1/other', undefined],
+];
+
+test('handler paths with parameters, wildcards, absolute URLs and RegExp answer requests in real Mokapi', { timeout: 45000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'mokapi-adapter-'));
+  let stop;
+  try {
+    const [port, apiPort] = await unusedPorts(2);
+    const base = `http://localhost:${port}/v1`;
+    const operation = { get: { responses: { 200: {
+      description: 'Mock response',
+      content: { 'application/json': { schema: {
+        type: 'object', required: ['handler'], properties: { handler: { type: 'string' }, params: { type: 'object' } },
+      } } },
+    } } } };
+    await writeFile(join(directory, 'contract.json'), JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: 'Adapter handler paths', version: '1.0.0' },
+      servers: [{ url: base }],
+      paths: Object.fromEntries(['/users/me', '/users/{id}', '/files/{dir}/{name}', '/orders',
+        '/reports/{id}', '/search/{term}', '/archive', '/other', '/hidden', '/status']
+        .map((path) => [path, operation])),
+    }));
+    await linkAdapter(directory);
+    await writeFile(join(directory, 'mocks.js'), `
+import { http, HttpResponse } from 'msw';
+import { app } from 'mokapi';
+import { register } from 'mokapi-msw-adapter/register';
+const answer = (handler) => ({ params }) => HttpResponse.json({ handler, params });
+export default function () {
+  // Native route, so readiness does not depend on the adapter under test.
+  app.http().get('/status', (request, response) => { response.data = { handler: 'ready' }; });
+  register({
+    success: [
+      http.get('/v1/users/me', answer('me')),
+      http.get('/v1/users/:id', answer('user')),
+      http.get('/v1/files/*', answer('file')),
+      http.get('https://api.example.com/v1/orders', answer('order')),
+      http.get(/\\/v1\\/reports\\/\\d+$/, answer('report')),
+      http.get(/^https:\\/\\/api\\.example\\.com\\//, answer('origin-regexp')),
+      http.get('/v1/search/:term', answer('search')),
+    ],
+    other: [http.get('/v1/hidden', answer('hidden'))],
+  });
+}`);
+    await writeFile(join(directory, 'mokapi.yaml'), mokapiConfig(apiPort, ['contract.json', 'mocks.js']));
+
+    stop = await startMokapi(directory, async () => {
+      assert.equal((await getJson(`${base}/status`)).handler, 'ready');
+    });
+
+    for (const [path, expected] of handlerPathCases) {
+      const body = await getJson(`http://localhost:${port}${path}`);
+      // Generated data is random, so it never equals an adapter answer.
+      if (expected) assert.deepEqual(body, expected, path);
+      else assert.ok(!['me', 'user', 'file', 'order', 'report', 'origin-regexp', 'search'].includes(body.handler), path);
+    }
+    await getJson(`${base}/hidden`);
+    await stop();
+    assert.doesNotMatch(stop.output(), /No shared mock for GET \/v1\/(users|files|orders|reports|search|archive|other)/);
+    assert.match(stop.output(), /No shared mock for GET \/v1\/hidden/);
+  } finally {
+    if (stop) await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

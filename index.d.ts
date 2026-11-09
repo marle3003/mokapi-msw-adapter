@@ -21,8 +21,13 @@ export interface ResolverRequest {
 
 /** Argument passed to a resolver. */
 export interface ResolverInfo {
-  /** Path parameters. Always empty, because only exact paths are supported. */
-  readonly params: Record<string, unknown>;
+  /**
+   * Parameters of the handler path: `:name`, `:name+` and `:name*` by name (URL-decoded
+   * strings, `a/b` for several segments), each `*` by its index (`'0'`, `'1'`), a RegExp
+   * by the index of each group. Empty for an exact path. Mokapi's OpenAPI path
+   * parameters are not included.
+   */
+  readonly params: Record<string, string>;
   readonly request: ResolverRequest;
 }
 
@@ -36,20 +41,23 @@ export interface JsonResponse<T = unknown> {
 /** Function that returns the mock response for a request. */
 export type HttpResponseResolver = (info: ResolverInfo) => JsonResponse | Promise<JsonResponse>;
 
-/** Matches requests by method and exact relative path, like MSW's `HttpHandler`. */
+/** Matches requests by method and path, like MSW's `HttpHandler`. */
 export class HttpHandler {
   /**
    * @param method HTTP method (case-insensitive) or a RegExp that the method must match.
-   * @param path Exact relative path, for example `/api/profile`. Patterns are not supported.
+   * @param path Path of the request including the base path of the OpenAPI `servers` URL.
+   *   Supports `:name`, `:name?`, `:name+`, `:name*` and `*`, as in MSW. An absolute URL
+   *   matches by its path only, the origin is ignored. A RegExp is tested against the
+   *   request URL without query. A query string or hash in a string path throws.
    * @param resolver Returns the response.
    */
-  constructor(method: string | RegExp, path: string, resolver: HttpResponseResolver);
+  constructor(method: string | RegExp, path: string | RegExp, resolver: HttpResponseResolver);
   readonly method: string | RegExp;
-  readonly path: string;
+  readonly path: string | RegExp;
   readonly resolver: HttpResponseResolver;
 }
 
-type HandlerFactory = (path: string, resolver: HttpResponseResolver) => HttpHandler;
+type HandlerFactory = (path: string | RegExp, resolver: HttpResponseResolver) => HttpHandler;
 
 /** Creates request handlers, like MSW's `http` namespace. */
 export const http: {

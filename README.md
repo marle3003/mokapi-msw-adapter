@@ -225,11 +225,37 @@ Imported from `msw` (aliased to this package in Mokapi):
   `http.head`, `http.options` and `http.all`
 - `new HttpHandler(method, path, resolver)` with a string or RegExp method,
   for example `QUERY` or custom methods. Methods match case-insensitively, as in MSW.
+- handler paths, see below
 - synchronous and asynchronous resolvers
 - `HttpResponse.json(body, { status, headers })` with plain-object headers
 - resolver argument: `params` and a `request` with `url` (string), `method`,
   `headers.get()`, `json()` and `text()`
 - `delay(durationOrMode)`, see below
+
+#### Handler paths
+
+The path matching follows MSW 3.x. A handler path is a string or a RegExp:
+
+| Path                               | Matches                            | `params`                   |
+|------------------------------------|------------------------------------|----------------------------|
+| `/users/:id`                       | `/users/42`                        | `{ id: '42' }`             |
+| `/orders/:id?`                     | `/orders` and `/orders/5`          | `{}` and `{ id: '5' }`     |
+| `/r/:rest+`                        | `/r/a/b`, but not `/r`             | `{ rest: 'a/b' }`          |
+| `/r/:rest*`                        | `/r` and `/r/a/b`                  | `{}` and `{ rest: 'a/b' }` |
+| `/files/*`                         | `/files/a/b.txt`                   | `{ 0: 'a/b.txt' }`         |
+| `https://api.example.com/v1/users` | `/v1/users`, the origin is ignored | `{}`                       |
+| `/\/v1\/reports\/\d+$/`            | `/v1/reports/42`                   | `{}`                       |
+
+`:name+` and `:name*` give one string, `'a/b'` for several segments. Each `*`
+gets an index key (`'0'`, `'1'`, ...). Parameter values are URL-decoded. A RegExp
+puts every group, named or unnamed, under its index. Matching is case-sensitive,
+and `/users` matches `/users/`, while `/users/` doesn't match `/users`.
+
+```js
+http.get('/users/:id', ({ params }) =>
+  HttpResponse.json({ id: params.id, name: 'Jane Doe' }),
+),
+```
 
 #### `delay()`
 
@@ -269,13 +295,40 @@ Invalid arguments throw when you call `delay()`, for example
   package's `index.d.ts`. If a module shared with the browser calls
   `delay('infinite')`, remove it for Mokapi.
 - `delay('real')` and `delay()` always wait 100-399 ms. MSW uses 5 ms in Node.
+- Mokapi doesn't know the origin the client used, so the adapter ignores the
+  origin of an absolute URL and matches by path only. Parameters in the origin
+  (`https://:tenant.example.com/...`) give no params. A wildcard that spans the
+  origin gives the path instead of the full URL: for `http.get('*', ...)` the
+  param `0` is `a/b`, not `http://localhost/a/b`. A leading `*` before a path
+  (`*/users`) is ignored.
+- A RegExp is tested against the URL Mokapi received, for example
+  `http://localhost:8080/v1/users`, without the query. The default port of the
+  scheme (80, 443) is omitted. A RegExp with the origin of your real API
+  doesn't match.
+- An optional parameter in the middle of a path, such as `/a/:x?/b`, follows
+  path-to-regexp: it matches `/a/b` and `/a/1/b`. MSW 3.0.4 matches this
+  differently (`/a/1/b` doesn't match there).
+- A query or hash in a string path, such as `/users?page=1`, throws. MSW
+  ignores the query and hash of a handler path. The adapter throws so that a
+  handler that looks query-specific isn't silently treated as path-only.
+  `:name?` is an optional parameter and works.
+- Unsupported path-to-regexp syntax throws, for example `/u/:id(\\d+)` or
+  `/u{/:x}`. MSW doesn't throw, the handler just never matches.
+- `params` contains only the parameters of the handler path, not the OpenAPI
+  path parameters of your contract.
+- A handler with a catch-all path such as `http.all('*', ...)` matches every
+  request of the API, so all of them go through the scenario logic. A scenario
+  without a matching handler then throws `No shared mock` for requests that
+  Mokapi would otherwise answer on its own.
 
 ## Limitations
 
 This is not a full implementation of MSW. Not supported:
 
-- path patterns such as `/users/:id` or `/files/*`, and absolute URLs. Only
-  exact relative paths work.
+- path-to-regexp syntax beyond `:name`, `:name?`, `:name+`, `:name*` and `*`,
+  for example custom regular expressions (`:id(\\d+)`), groups and escapes
+- telling an encoded slash `%2F` from `/` in a request path. Mokapi hands the
+  adapter the decoded path, so `/files/a%2Fb` matches like `/files/a/b`.
 - responses other than `HttpResponse.json()`, and status codes without a body
   (204, 205, 304)
 - cookies, streaming, network errors and `passthrough()`
